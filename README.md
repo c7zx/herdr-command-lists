@@ -1,14 +1,14 @@
-# Command Lists v1.0.2 — Herdr plugin for Linux & macOS
+# Command Lists v1.0.3 — Herdr plugin for Linux & macOS
 
-A small Herdr plugin that lets you browse and run commands from custom command lists.
+Browse and run your favorite commands from custom lists.
 
 Plugin ID: `herdr.command-lists`
 
 ## Preview
 
-![Command List preview](preview/preview.png)
+![Command Lists preview](preview/preview.png)
 
-![Command List preview 2](preview/preview-2.png)
+![Command Lists preview 2](preview/preview-2.png)
 
 ## Installation on Linux or macOS
 
@@ -45,7 +45,7 @@ chmod +x install.sh uninstall.sh
 2. Builds `command-lists`.
 3. Checks for an existing local Command Lists installation and replaces it only after the new source builds successfully.
 4. Links the plugin with Herdr.
-5. Creates `Main.md`, `Systems.md`, and `More.md` only when no `.md` command lists already exist.
+5. Creates `System.md`, `SSH.md`, and `Firewall.md` only when no `.md` command lists already exist; initializes `tab-order.txt` without replacing an existing order.
 6. Copies `HELP.md` into the plugin config directory for local help.
 7. Adds a `Ctrl+Y` Command Lists shortcut to `~/.config/herdr/config.toml` when that key is not already in use.
 
@@ -61,16 +61,19 @@ herdr plugin config-dir herdr.command-lists
 
 Command lists are stored in its `lists/` directory. Every `.md` file directly inside that directory appears as a tab.
 
+**Tab order:** Move the active tab left with `Ctrl+P` or right with `Ctrl+N`; the order is saved automatically. Or edit `tab-order.txt` in the plugin configuration directory, one `.md` filename per line (for example: `Firewall.md`, `System.md`, `SSH.md`). Listed tabs appear first in that order; any unlisted/new tabs follow in alphabetical order. Changes take effect the next time the popup opens. Your existing lists and tab order are preserved on reinstall.
+
+```sh
+nano "$(herdr plugin config-dir herdr.command-lists)/tab-order.txt"
+```
+
 Edit a command list:
 
 ```sh
-nano "$(herdr plugin config-dir herdr.command-lists)/lists/Main.md"
+nano "$(herdr plugin config-dir herdr.command-lists)/lists/System.md"
 ```
 
-A fresh installation starts with Main.md, Systems.md, and More.md. These are example lists and can be deleted.
-
-Place your own command lists in:
-$(herdr plugin config-dir herdr.command-lists)/lists/
+A fresh installation starts with `System.md`, `SSH.md`, and `Firewall.md`. The bundled commands are read-only/status-oriented examples intended to be customized.
 
 Rules:
 
@@ -87,6 +90,7 @@ Rules:
 - `Down`: select downward; wraps from the last command to the first command.
 - `Left`: switch to the previous list; wraps from the first tab to the last tab.
 - `Right`: switch to the next list; wraps from the last tab to the first tab.
+- `Ctrl+P` / `Ctrl+N`: move the active tab one position left/right and save the order. `Ctrl+Left` / `Ctrl+Right` also work where the terminal sends those keys.
 - `Ctrl+Space`: jump to the first command in the next `#` section; wraps back to the first section.
 - Type: filter commands case-insensitively. Matching section headings remain visible.
 - `Backspace`: edit the search query.
@@ -94,6 +98,8 @@ Rules:
 - `Enter`: run the selected command in the original Herdr pane.
 - `?`: open/close the built-in help view.
 - `Esc` or `Ctrl+C`: close Command Lists.
+
+Selected tabs and commands use a fixed white background with black text, independent of the terminal color theme. Section headings keep their original colors.
 
 No command is selected when the popup first opens. `Down` starts at the first command and `Up` starts at the last command. The visible list scrolls only when the selection reaches its edge.
 
@@ -125,15 +131,13 @@ herdr server reload-config
 
 There is no separate updater. Extract or clone the newer release into its own permanent directory and run its `install.sh`.
 
-The installer tests and builds the new source before removing an existing local Command Lists installation. The `lists/` directory is preserved, and starter lists are not added when `.md` lists already exist.
+The installer tests and builds the new source before replacing an existing local Command Lists installation. The `lists/` directory and `tab-order.txt` are preserved, and starter lists are not added when `.md` lists already exist.
 
 Do not extract a newer release inside the currently installed plugin directory.
 
 ## Uninstall
 
-Run `uninstall.sh` from outside the installed plugin directory. The uninstaller removes the Command Lists shortcut, unlinks the plugin, removes generated plugin configuration, and keeps the `lists/` directory with your `.md` files.
-
-If the plugin source is inside `~/.herdr-plugins/`, the source directory is removed as well. Herdr config backups are kept.
+Run `uninstall.sh` from outside the installed plugin directory. The uninstaller removes the Command Lists shortcut and unlinks the plugin. Your `lists/` directory, `tab-order.txt`, and source files are kept; delete the source folder manually if desired. Herdr config backups are kept.
 
 ## Security
 
@@ -149,4 +153,4 @@ If the plugin source is inside `~/.herdr-plugins/`, the source directory is remo
 - No `sh -c` is used by the plugin when submitting a command. The selected text is passed as a single argument to `herdr pane run`.
 - Command-list files intentionally contain executable input. A dangerous command stored there remains dangerous and runs after you select it and press Enter.
 
-See [CHANGELOG.md](CHANGELOG.md) for the changes in v1.0.2 and [LICENSE](LICENSE) for the MIT license.
+See [CHANGELOG.md](CHANGELOG.md) for the changes in v1.0.3 and [LICENSE](LICENSE) for the MIT license.

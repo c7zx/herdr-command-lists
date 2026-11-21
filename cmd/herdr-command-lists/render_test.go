@@ -23,15 +23,15 @@ func TestRenderedViewportStaysInPlaceWhileMovingUp(t *testing.T) {
 	m.refresh(false)
 	for i := 0; i < 9; i++ {
 		m.down()
-		render(m, 10, 60)
+		render(m, 11, 60)
 	}
 	for selected := 7; selected >= 4; selected-- {
 		m.up()
-		lines := plainScreen(render(m, 10, 60))
+		lines := plainScreen(render(m, 11, 60))
 		for row := 0; row < 5; row++ {
 			prefix := "  "
 			if row+4 == selected {
-				prefix = "> "
+				prefix = "› "
 			}
 			want := fmt.Sprintf("%scommand-%02d", prefix, row+4)
 			if got := lines[row+4]; got != want {
@@ -40,8 +40,8 @@ func TestRenderedViewportStaysInPlaceWhileMovingUp(t *testing.T) {
 		}
 	}
 	m.up()
-	lines := plainScreen(render(m, 10, 60))
-	if lines[4] != "> command-03" {
+	lines := plainScreen(render(m, 11, 60))
+	if lines[4] != "› command-03" {
 		t.Fatalf("moving beyond top did not reveal previous command: %#v", lines)
 	}
 }
@@ -71,7 +71,7 @@ func TestRenderFitsSmallPopupAndKeepsLongActiveTabVisible(t *testing.T) {
 						t.Fatalf("row %d has width %d > %d: %q", i, width, size[1], line)
 					}
 				}
-				if size[0] >= 6 && size[1] >= 12 && (!strings.Contains(lines[1], "[This") || !strings.Contains(lines[1], "…]")) {
+				if size[0] >= 7 && size[1] >= 18 && (!strings.Contains(lines[1], "This") || !strings.Contains(lines[1], "…")) {
 					t.Fatalf("long active tab is missing or not shortened: %q", lines[1])
 				}
 			})

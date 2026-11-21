@@ -14,7 +14,7 @@ import (
 
 const (
 	pluginID     = "herdr.command-lists"
-	version      = "1.0.2"
+	version      = "1.0.3"
 	targetEnvKey = "HERDR_COMMAND_LISTS_TARGET_PANE"
 )
 
@@ -37,6 +37,7 @@ type listEntry struct {
 
 type uiModel struct {
 	lists      []commandList
+	listsDir   string
 	activeTab  int
 	entries    []listEntry
 	visible    []int
@@ -227,16 +228,17 @@ func runUI() error {
 	defer restore()
 	fmt.Print("\x1b[?1049h\x1b[?25l\x1b[?2004h")
 	defer fmt.Print("\x1b[?2004l\x1b[?25h\x1b[?1049l")
-	m := &uiModel{lists: lists, selected: -1,
+	m := &uiModel{lists: lists, listsDir: dir, selected: -1,
 		helpPath: filepath.Join(filepath.Dir(dir), helpFile)}
 	if len(lists) > 0 {
 		m.entries = lists[0].entries
 	}
 	m.refresh(false)
+	keys := &keyReader{nextByte: readByte}
 	for {
 		rows, cols := terminalSize()
 		draw(m, rows, cols)
-		event, r, err := readKey()
+		event, r, err := keys.next()
 		if err != nil {
 			return err
 		}
@@ -262,6 +264,14 @@ func runUI() error {
 			m.switchTab(-1)
 		case "right":
 			m.switchTab(1)
+		case "tab-left":
+			if err := m.moveTab(-1); err != nil {
+				return err
+			}
+		case "tab-right":
+			if err := m.moveTab(1); err != nil {
+				return err
+			}
 		case "ctrl+space":
 			m.nextSection()
 		case "up":
@@ -305,6 +315,23 @@ func (m *uiModel) switchTab(delta int) {
 	m.entries = m.lists[m.activeTab].entries
 	m.query = nil
 	m.refresh(false)
+}
+
+// Ctrl+P / Ctrl+N move the active tab and remember the new order. Unlike
+// ordinary Left / Right switching, moving a tab stops at the first/last tab.
+func (m *uiModel) moveTab(delta int) error {
+	to := m.activeTab + delta
+	if to < 0 || to >= len(m.lists) {
+		return nil
+	}
+	reordered := append([]commandList(nil), m.lists...)
+	reordered[m.activeTab], reordered[to] = reordered[to], reordered[m.activeTab]
+	if err := saveTabOrder(filepath.Dir(m.listsDir), reordered); err != nil {
+		return err
+	}
+	m.lists = reordered
+	m.activeTab = to
+	return nil
 }
 
 func (m *uiModel) ensureVisible(height int) {
@@ -508,24 +535,28 @@ func draw(m *uiModel, rows, cols int) {
 func render(m *uiModel, rows, cols int) string {
 	var b strings.Builder
 	b.WriteString("\x1b[2J\x1b[H")
-	if rows < 6 || cols < 12 {
+	if rows < 7 || cols < 18 {
 		b.WriteString(truncate("Command Lists: enlarge popup", cols))
 		return b.String()
 	}
 	if m.help {
 		return renderHelp(m, rows, cols)
 	}
-	fmt.Fprintf(&b, "\x1b[1m%s\x1b[0m\r\n", truncate(
-		fmt.Sprintf("Command Lists %s | %d commands", version, countCommands(m.entries)), cols))
+
+	title := fmt.Sprintf("Command Lists %s · %d commands", version, countCommands(m.entries))
+	fmt.Fprintf(&b, "\x1b[1;36m%s\x1b[0m\r\n", truncate(title, cols))
 	b.WriteString(renderTabs(m.lists, m.activeTab, cols))
-	b.WriteString("\r\nSearch: ")
+	b.WriteString("\r\n")
+	b.WriteString("Search  ")
 	if len(m.query) == 0 {
-		fmt.Fprintf(&b, "\x1b[2m%s\x1b[0m", truncate("type to filter", cols-8))
+		fmt.Fprintf(&b, "\x1b[2m%s\x1b[0m", truncate("type to filter commands…", cols-8))
 	} else {
-		b.WriteString(truncate(string(m.query), cols-8))
+		fmt.Fprintf(&b, "\x1b[36m%s\x1b[0m", truncate(string(m.query), cols-8))
 	}
-	b.WriteString("\r\n\r\n")
-	height := rows - 5
+	b.WriteString("\r\n")
+	fmt.Fprintf(&b, "\x1b[2m%s\x1b[0m\r\n", strings.Repeat("─", cols))
+
+	height := rows - 6
 	m.ensureVisible(height)
 	end := min(m.offset+height, len(m.visible))
 	for pos := m.offset; pos < end; pos++ {
@@ -533,9 +564,17 @@ func render(m *uiModel, rows, cols int) string {
 		if entry.kind != entryBlank {
 			prefix := "  "
 			if pos == m.selected {
-				prefix = "\x1b[7m> "
+				prefix = "\x1b[48;2;255;255;255;38;2;0;0;0m› "
 			}
-			fmt.Fprintf(&b, "%s%s%s\x1b[0m", prefix, entryColor(entry), truncate(entry.text, cols-2))
+			text := entry.text
+			if entry.kind == entryHeader {
+				text = "─ " + headingText(entry.text)
+			}
+			color := entryColor(entry)
+			if pos == m.selected {
+				color = ""
+			} // keep the selection white/black even on indented commands
+			fmt.Fprintf(&b, "%s%s%s\x1b[0m", prefix, color, truncate(text, cols-2))
 		}
 		b.WriteString("\r\n")
 	}
@@ -551,31 +590,42 @@ func render(m *uiModel, rows, cols int) string {
 	for i := printed; i < height; i++ {
 		b.WriteString("\r\n")
 	}
-	fmt.Fprintf(&b, "\x1b[2m%s\x1b[0m", truncate("↑/↓ select | ←/→ lists | Enter run | ? help | Esc close", cols))
+	fmt.Fprintf(&b, "\x1b[2m%s\x1b[0m\r\n", strings.Repeat("─", cols))
+	fmt.Fprintf(&b, "\x1b[2m%s\x1b[0m", truncate("↑↓ select  ←→ lists  Enter run  Ctrl+Space section  ? help  Esc/Ctrl+C close", cols))
 	return b.String()
+}
+
+func headingText(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.TrimLeft(text, "#")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "Section"
+	}
+	return text
 }
 
 func renderTabs(lists []commandList, active, cols int) string {
 	if len(lists) == 0 {
-		return truncate("[No lists]", cols)
+		return truncate("  No lists", cols)
 	}
 	active = min(max(active, 0), len(lists)-1)
 	labels := make([]string, len(lists))
 	for i, list := range lists {
-		labels[i] = "[" + truncate(safeDisplay(list.name), min(14, max(cols-6, 1))) + "]"
+		labels[i] = " " + truncate(safeDisplay(list.name), min(14, max(cols-6, 1))) + " "
 	}
 	start, end, used := active, active, displayWidth(labels[active])
 	budget := max(cols-4, 0)
 	for {
 		grew := false
-		if start > 0 && used+1+displayWidth(labels[start-1]) <= budget {
+		if start > 0 && used+2+displayWidth(labels[start-1]) <= budget {
 			start--
-			used += 1 + displayWidth(labels[start])
+			used += 2 + displayWidth(labels[start])
 			grew = true
 		}
-		if end+1 < len(lists) && used+1+displayWidth(labels[end+1]) <= budget {
+		if end+1 < len(lists) && used+2+displayWidth(labels[end+1]) <= budget {
 			end++
-			used += 1 + displayWidth(labels[end])
+			used += 2 + displayWidth(labels[end])
 			grew = true
 		}
 		if !grew {
@@ -590,10 +640,12 @@ func renderTabs(lists []commandList, active, cols int) string {
 	}
 	for i := start; i <= end; i++ {
 		if i > start {
-			b.WriteByte(' ')
+			b.WriteString("  ")
 		}
 		if i == active {
-			b.WriteString("\x1b[1;7m")
+			b.WriteString("\x1b[48;2;255;255;255;38;2;0;0;0m")
+		} else {
+			b.WriteString("\x1b[2m")
 		}
 		b.WriteString(labels[i])
 		b.WriteString("\x1b[0m")

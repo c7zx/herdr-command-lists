@@ -40,15 +40,19 @@ if [ -n "$old_source" ]; then
         echo "Error: refusing to replace an installation with an unexpected manifest: $old_source" >&2
         exit 1
     fi
-    if [ ! -f "$old_uninstaller" ] || [ -L "$old_uninstaller" ]; then
-        echo "Error: existing Command Lists installation has no safe uninstall.sh: $old_source" >&2
+    if [ -L "$old_uninstaller" ]; then
+        echo "Error: refusing a symlinked uninstaller: $old_uninstaller" >&2
         exit 1
     fi
 
     if [ "$old_source" = "$source_dir" ]; then
         # Reinstalling in place: unlink/clean generated config, but keep this source
         # alive long enough for the installer to continue.
-        sh "$old_uninstaller" --keep-source >/dev/null
+        if [ -f "$old_uninstaller" ]; then
+            sh "$old_uninstaller" --keep-source >/dev/null
+        else
+            "$herdr_bin" plugin unlink herdr.command-lists >/dev/null
+        fi
     else
         # Never let an old source tree delete the new release nested inside it.
         case "$source_dir/" in
@@ -57,9 +61,15 @@ if [ -n "$old_source" ]; then
                 exit 1
                 ;;
         esac
-        # The old uninstaller preserves lists/. Hardened versions delete their source
-        # only when it is below ~/.herdr-plugins; otherwise the old source is kept.
-        sh "$old_uninstaller" >/dev/null
+        # Keep user lists and tab ordering; old releases may not ship an
+        # uninstaller, in which case unlink is enough to preserve that data.
+        if [ -f "$old_uninstaller" ]; then
+            sh "$old_uninstaller" >/dev/null
+        else
+            # Some earlier release archives accidentally omitted uninstall.sh.
+            # Preserve the old source and user configuration, then relink.
+            "$herdr_bin" plugin unlink herdr.command-lists >/dev/null
+        fi
     fi
 fi
 
@@ -74,10 +84,12 @@ if ! "$herdr_bin" server reload-config >/dev/null 2>&1; then
     reload_note="Restart Herdr or run: herdr server reload-config"
 fi
 
-printf '\nCommand Lists v1.0.2 installed.\n\n'
+printf '\nCommand Lists v1.0.3 installed.\n\n'
 printf 'Lists: %s\n' "$lists_dir"
 printf '%s\n' 'Edit the .md files in that directory; changes are read whenever the popup opens.'
-printf '\n%s\n' 'Controls: ↑/↓ commands, ←/→ lists, Ctrl+Space next section, Enter run, ? help, Esc close.'
+printf 'Tab order: %s\n' "$(dirname "$lists_dir")/tab-order.txt"
+printf '%s\n' 'Move the active tab with Ctrl+P (left) / Ctrl+N (right), or edit tab-order.txt.'
+printf '\n%s\n' 'Controls: ↑/↓ commands, ←/→ lists, Ctrl+P/N move tab, Ctrl+Space section, Enter run, ? help, Esc/Ctrl+C close.'
 printf '%s\n' 'Uninstall from outside this source directory; your lists are kept.'
 if [ -n "$reload_note" ]; then
     printf '\n%s\n' "$reload_note"

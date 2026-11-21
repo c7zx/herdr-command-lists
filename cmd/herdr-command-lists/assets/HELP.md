@@ -1,4 +1,4 @@
-Command Lists v1.0.2
+Command Lists v1.0.3
 ===================
 
 Default shortcut: Ctrl+Y (when that key is available).
@@ -7,6 +7,7 @@ Controls
 --------
 Up / Down       Select command; wrap at both ends
 Left / Right    Previous / next list; wrap at both ends
+Ctrl+P / N      Move active tab left / right; saves tab order
 Ctrl+Space      Next section; clear filter and wrap
 Type            Filter this list
 Backspace       Edit filter
@@ -25,6 +26,11 @@ Each .md file in the lists directory becomes one tab.
 The filename without .md is the tab name. Long names are
 shortened in the tab bar. Lists reload when the popup opens.
 
+To reorder the tabs: press Ctrl+P / Ctrl+N while a tab is active,
+or edit tab-order.txt in the plugin config directory:
+  nano "$(herdr plugin config-dir herdr.command-lists)/tab-order.txt"
+Put one .md filename per line; unlisted tabs appear afterward.
+
 # lines are headings. Blank lines add spacing. Every other
 non-empty line is one shell command. Leading spaces add
 visual indentation. Use one physical line per command.
@@ -32,7 +38,7 @@ visual indentation. Use one physical line per command.
 Edit lists from a shell:
 
 cfg=$(herdr plugin config-dir herdr.command-lists)
-nano "$cfg/lists/Main.md"
+nano "$cfg/lists/System.md"
 
 Running commands
 ----------------

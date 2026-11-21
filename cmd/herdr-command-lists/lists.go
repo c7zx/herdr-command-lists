@@ -19,6 +19,7 @@ import (
 const (
 	listsDirName = "lists"
 	helpFile     = "HELP.md"
+	orderFile    = "tab-order.txt"
 	maxFileBytes = 1 << 20
 	maxLists     = 128
 )
@@ -47,6 +48,9 @@ func ensureListsDir() (string, error) {
 		return "", err
 	}
 	if _, err := ensureHelpPath(dir); err != nil {
+		return "", err
+	}
+	if err := ensureOrderPath(dir); err != nil {
 		return "", err
 	}
 
@@ -250,6 +254,87 @@ func loadHelpLines(path string) ([]string, error) {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n"), nil
 }
 
+// The tab order is independent of the user's executable .md lists. Editing
+// this file never alters list content. Unknown entries are simply skipped.
+const defaultTabOrder = "# Tab order: first filename is the first tab; unlisted .md files appear after these.\nSystem.md\nSSH.md\nFirewall.md\n"
+
+func ensureOrderPath(configDir string) error {
+	path := filepath.Join(configDir, orderFile)
+	if err := createPrivateFile(path, []byte(defaultTabOrder)); err != nil {
+		return err
+	}
+	f, err := openCommandFile(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Chmod(0o600)
+}
+
+func loadTabOrder(configDir string) ([]string, error) {
+	path := filepath.Join(configDir, orderFile)
+	data, err := readRegularFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		data = []byte(defaultTabOrder)
+	} else if err != nil {
+		return nil, err
+	}
+	var order []string
+	seen := make(map[string]bool)
+	for n, line := range strings.Split(string(data), "\n") {
+		name := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if name == "" || strings.HasPrefix(name, "#") {
+			continue
+		}
+		if err := validateVisibleLine(name); err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", orderFile, n+1, err)
+		}
+		if !strings.HasSuffix(name, ".md") || strings.ContainsAny(name, `/\`) {
+			return nil, fmt.Errorf("%s line %d: expected a .md filename, not a path", orderFile, n+1)
+		}
+		if !seen[name] {
+			order = append(order, name)
+			seen[name] = true
+		}
+	}
+	return order, nil
+}
+
+// Persist interactive tab moves using a same-directory temporary file. We
+// reject symlinks and do not follow paths that might have been swapped.
+func saveTabOrder(configDir string, lists []commandList) error {
+	path := filepath.Join(configDir, orderFile)
+	if f, err := openCommandFile(path); err == nil {
+		_ = f.Close()
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	var b strings.Builder
+	b.WriteString("# Tab order (top to bottom); other .md lists appear afterward.\n")
+	for _, list := range lists {
+		b.WriteString(list.name)
+		b.WriteString(".md\n")
+	}
+	f, err := os.CreateTemp(configDir, ".tab-order-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	_, writeErr := io.WriteString(f, b.String())
+	closeErr := f.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return os.Rename(f.Name(), path)
+}
+
 func loadLists(dir string) ([]commandList, error) {
 	if err := checkPath(dir, true); err != nil {
 		return nil, err
@@ -280,14 +365,17 @@ func loadLists(dir string) ([]commandList, error) {
 		}
 		lists = append(lists, commandList{name: name, path: path, entries: entries})
 	}
-	// Keep bundled starter tabs in their intended order. Any additional lists
-	// retain their filename order after the bundled tabs.
-	starterOrder := []string{"Main", "Systems", "More"}
+	// Use the user-defined tab order; additional lists remain available in
+	// alphabetic filename order. A missing order file keeps the old defaults.
+	order, err := loadTabOrder(filepath.Dir(dir))
+	if err != nil {
+		return nil, err
+	}
 	ordered := make([]commandList, 0, len(lists))
 	used := make([]bool, len(lists))
-	for _, starter := range starterOrder {
+	for _, filename := range order {
 		for i, list := range lists {
-			if list.name == starter {
+			if !used[i] && list.name+".md" == filename {
 				ordered = append(ordered, list)
 				used[i] = true
 				break

@@ -1,8 +1,8 @@
 id = "herdr.command-lists"
 name = "Command Lists"
-version = "1.0.2"
+version = "1.0.3"
 min_herdr_version = "0.9.0"
-description = "Small, auditable command lists with tabs, sections, search, and quick execution."
+description = "Browse and run your favorite commands from custom lists."
 platforms = ["linux", "macos"]
 
 [[build]]

@@ -51,7 +51,7 @@ func TestEnsureListsCreatesThreePrivateStarterListsAndCurrentHelp(t *testing.T) 
 	if len(lists) != 3 {
 		t.Fatalf("fresh config should contain three example lists, got %d", len(lists))
 	}
-	wantNames := []string{"Main", "Systems", "More"}
+	wantNames := []string{"System", "SSH", "Firewall"}
 	for i, want := range wantNames {
 		if lists[i].name != want {
 			t.Fatalf("starter order = %v, want %v", []string{lists[0].name, lists[1].name, lists[2].name}, wantNames)
@@ -93,73 +93,64 @@ func TestEmbeddedStarterListsMatchReleaseExamples(t *testing.T) {
 		want string
 	}{
 		{
-			name: "Main.md",
-			want: `#=========================== MAIN ===========================#
+			name: "System.md",
+			want: `# Edit List
+nano "$(herdr plugin config-dir herdr.command-lists)/lists/System.md"
+nano "$(herdr plugin config-dir herdr.command-lists)/tab-order.txt"
 
-# Edit This List
-nano "$(herdr plugin config-dir herdr.command-lists)/lists/Main.md"
-
-#------------------- COMMAND LISTS PLUGIN -------------------#
-
-# Plugin
-nano ~/.config/herdr/config.toml
-cat "$(herdr plugin config-dir herdr.command-lists)/HELP.md"
-cd "$(herdr plugin config-dir herdr.command-lists)/lists"
-
-#--------------------- EXAMPLE COMMANDS ---------------------#
-
-# Examples
+# Identity
 whoami
+id
+hostname
+
+# System
+uname -a
+uptime
 date
 
-#---------------------- MORE EXAMPLES -----------------------#
+# Storage
+df -h
 
-# More
-printf 'Hello World!\n'
-cd "$HOME"`,
+# Location
+pwd`,
 		},
 		{
-			name: "Systems.md",
-			want: `#=========================== Systems ===========================#
+			name: "SSH.md",
+			want: `# Edit List
+nano "$(herdr plugin config-dir herdr.command-lists)/lists/SSH.md"
 
-# Edit This List
-nano "$(herdr plugin config-dir herdr.command-lists)/lists/Systems.md"
+# Client
+ssh -V
+ssh-add -l
 
-# System 1
- uptime
+# SSH Directory
+ls -la ~/.ssh
 
-# System 2
-  df -h
+# Client Config
+test -f ~/.ssh/config && sed -n '1,160p' ~/.ssh/config || true
 
-# System 3
-   hostname
-
-# System 4
-whoami
- uptime
-  printf 'Indented lines use a different color.\n'`,
+# Known Hosts
+test -f ~/.ssh/known_hosts && wc -l ~/.ssh/known_hosts || true`,
 		},
 		{
-			name: "More.md",
-			want: `#=========================== More ===========================#
+			name: "Firewall.md",
+			want: `# Edit List
+nano "$(herdr plugin config-dir herdr.command-lists)/lists/Firewall.md"
 
-# Edit This List
-nano "$(herdr plugin config-dir herdr.command-lists)/lists/More.md"
+# UFW (Ubuntu / Debian)
+ufw status verbose
 
-# User
-whoami
+# firewalld (Fedora / RHEL)
+firewall-cmd --state
+firewall-cmd --get-active-zones
+firewall-cmd --list-all
 
-# Here
-pwd
+# nftables (Linux)
+nft list ruleset
 
-# Today
-date '+%Y-%m-%d'
-
-# Time
-date '+%H:%M:%S'
-
-# Hello
-printf 'Hello from Command Lists!\n'`,
+# PF (macOS)
+pfctl -s info
+pfctl -s rules`,
 		},
 	}
 
@@ -279,7 +270,7 @@ func TestEnsureListsSeedsExistingEmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := []string{lists[0].name, lists[1].name, lists[2].name}; !reflect.DeepEqual(got, []string{"Main", "Systems", "More"}) {
+	if got := []string{lists[0].name, lists[1].name, lists[2].name}; !reflect.DeepEqual(got, []string{"System", "SSH", "Firewall"}) {
 		t.Fatalf("empty retained directory starter order = %v", got)
 	}
 }
@@ -373,7 +364,7 @@ func TestLoadListsRejectsFIFOInsteadOfWaitingForInput(t *testing.T) {
 }
 
 func TestLoadEntriesPreservesLeadingSpaces(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "Systems.md")
+	path := filepath.Join(t.TempDir(), "Colors.md")
 	mustWrite(t, path, "# Colors\n date\n  whoami\n   printf 'indented\\n'\n")
 	entries, err := loadEntries(path)
 	if err != nil {
